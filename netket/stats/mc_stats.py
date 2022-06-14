@@ -55,16 +55,32 @@ _NaN = float("NaN")
 class Stats:
     """A dict-compatible class containing the result of the statistics function."""
 
+    n_obs: int = 0
     mean: Union[float, complex] = _NaN
     """The mean value"""
+    second_moment: Union[float, complex] = _NaN
     error_of_mean: float = _NaN
     variance: float = _NaN
     tau_corr: float = _NaN
     R_hat: float = _NaN
 
+    def append(self, stats):
+        n_obs = self.n_obs + stats.n_obs
+
+        p_self = self.n_obs / n_obs
+        p_stats = stats.n_obs / n_obs
+
+        mean = p_self * self.mean + p_stats * stats.mean
+        second_moment = p_self * self.second_moment + p_stats * stats.second_moment
+        var = jnp.abs(mean ** 2 - second_moment)
+
+        return Stats(n_obs, mean, second_moment, _NaN, var, _NaN, _NaN)
+
     def to_dict(self):
         jsd = {}
+        jsd["Observations"] = self.n_obs.item()
         jsd["Mean"] = self.mean.item()
+        jsd["Second Moment"] = self.second_moment.item()
         jsd["Variance"] = self.variance.item()
         jsd["Sigma"] = self.error_of_mean.item()
         jsd["R_hat"] = self.R_hat.item()
@@ -84,8 +100,12 @@ class Stats:
 
     # Alias accessors
     def __getattr__(self, name):
-        if name in ("mean", "Mean"):
+        if name in ("n_obs", "Observations"):
+            return self.n_obs
+        elif name in ("mean", "Mean"):
             return self.mean
+        elif name in ("second_moment", "Second Moment"):
+            return self.second_moment
         elif name in ("variance", "Variance"):
             return self.variance
         elif name in ("error_of_mean", "Sigma"):
@@ -168,8 +188,12 @@ def _statistics(data, batch_size):
     if data.ndim > 2:
         raise NotImplementedError("Statistics are implemented only for ndim<=2")
 
+    n_obs = data.size
+
     mean = _mean(data)
     variance = _var(data)
+
+    second_moment = _mean(data ** 2)
 
     ts = _total_size(data)
 
@@ -266,7 +290,7 @@ def _statistics(data, batch_size):
     else:
         R_hat = jnp.nan
 
-    res = Stats(mean, error_of_mean, variance, tau_corr, R_hat)
+    res = Stats(n_obs, mean, second_moment, error_of_mean, variance, tau_corr, R_hat)
 
     return res
     ##
